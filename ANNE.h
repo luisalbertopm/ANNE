@@ -7,6 +7,17 @@ namespace ANNE
 {
     enum ActivationFunction { ReLU, Tanh, Sigmoid, Linear };
 
+    struct DataSet
+    {
+        std::vector<std::vector<float>> inputs;
+        std::vector<std::vector<float>> outputs;
+
+        DataSet();
+        ~DataSet();
+
+        void addData(std::vector<float> input, std::vector<float> output);
+    };
+
     struct Neuron;
     struct Layer;
 
@@ -36,7 +47,7 @@ namespace ANNE
         void activate(ActivationFunction function);
         void calculateError();
         void calculateError(float target);
-        void updateWeights(float learningFactor);
+        void updateWeights(float learningRate);
     };
 
     struct Layer
@@ -49,7 +60,7 @@ namespace ANNE
         void connect(Layer * layer);
         void activate(ActivationFunction function);
         void calculateErrors();
-        void updateWeights(float learningFactor);
+        void updateWeights(float learningRate);
     };
 
     struct Network
@@ -59,10 +70,9 @@ namespace ANNE
         Network(std::vector<unsigned int> sizes = {});
         ~Network();
 
-        void connect();
         std::vector<float> compute(ActivationFunction function, std::vector<float> input, bool round = false);
-        void learn(ActivationFunction function, std::vector<float> input, std::vector<float> output, float learningFactor);
-        void learn(ActivationFunction function, std::vector<std::vector<float>> inputs, std::vector<std::vector<float>> outputs, float learningFactor, unsigned int epochs);
+        void learn(ActivationFunction function, std::vector<float> input, std::vector<float> output, float learningRate);
+        void train(ActivationFunction function, DataSet * dataSet, float learningRate, unsigned int epochs);
     };
 };
 

@@ -1,5 +1,19 @@
 #include "ANNE.h"
 
+ANNE::DataSet::DataSet() : inputs(), outputs() {}
+
+ANNE::DataSet::~DataSet()
+{
+    inputs.clear();
+    outputs.clear();
+}
+
+void ANNE::DataSet::addData(std::vector<float> input, std::vector<float> output)
+{
+    inputs.push_back(input);
+    outputs.push_back(output);
+}
+
 ANNE::Synapse::Synapse(Neuron * s, Neuron * t) : source(s), target(t), weight(1) {}
 
 ANNE::Synapse::~Synapse() {}
@@ -10,7 +24,6 @@ ANNE::Neuron::~Neuron()
 {
     for(Synapse * synapse : inputs)
         delete synapse;
-
     inputs.clear();
     outputs.clear();
 }
@@ -58,14 +71,14 @@ void ANNE::Neuron::calculateError(float target)
     error = (target - value) * value * (1 - value);
 }
 
-void ANNE::Neuron::updateWeights(float learningFactor)
+void ANNE::Neuron::updateWeights(float learningRate)
 {
     for(Synapse * synapse : inputs)
     {
         Neuron * source = synapse->source;
-        synapse->weight += learningFactor * error * source->value;
+        synapse->weight += learningRate * error * source->value;
     }
-    bias += learningFactor * error;
+    bias += learningRate * error;
 }
 
 ANNE::Layer::Layer(unsigned int size) : neurons()
@@ -78,7 +91,6 @@ ANNE::Layer::~Layer()
 {
     for(Neuron * neuron : neurons)
         delete neuron;
-
     neurons.clear();
 }
 
@@ -100,30 +112,25 @@ void ANNE::Layer::calculateErrors()
         neuron->calculateError();
 }
 
-void ANNE::Layer::updateWeights(float learningFactor)
+void ANNE::Layer::updateWeights(float learningRate)
 {
     for(Neuron * neuron : neurons)
-        neuron->updateWeights(learningFactor);
+        neuron->updateWeights(learningRate);
 }
 
 ANNE::Network::Network(std::vector<unsigned int> sizes)
 {
     for(unsigned int size : sizes)
         layers.push_back(new Layer(size));
+    for(unsigned int i = 1; i < layers.size(); i++)
+        layers[i]->connect(layers[i - 1]);
 }
 
 ANNE::Network::~Network()
 {
     for(Layer * layer : layers)
         delete layer;
-
     layers.clear();
-}
-
-void ANNE::Network::connect()
-{
-    for(unsigned int i = 1; i < layers.size(); i++)
-        layers[i]->connect(layers[i - 1]);
 }
 
 std::vector<float> ANNE::Network::compute(ActivationFunction function, std::vector<float> input, bool round)
@@ -143,7 +150,7 @@ std::vector<float> ANNE::Network::compute(ActivationFunction function, std::vect
     return output;
 }
 
-void ANNE::Network::learn(ActivationFunction function, std::vector<float> input, std::vector<float> output, float learningFactor)
+void ANNE::Network::learn(ActivationFunction function, std::vector<float> input, std::vector<float> output, float learningRate)
 {
     std::vector<float> result = compute(function, input);
     Layer * outputLayer = layers[layers.size() - 1];
@@ -152,12 +159,12 @@ void ANNE::Network::learn(ActivationFunction function, std::vector<float> input,
     for(unsigned int l = layers.size() - 2; l > 0; l--)
         layers[l]->calculateErrors();
     for(Layer * layer : layers)
-        layer->updateWeights(learningFactor);
+        layer->updateWeights(learningRate);
 }
 
-void ANNE::Network::learn(ActivationFunction function, std::vector<std::vector<float>> inputs, std::vector<std::vector<float>> outputs, float learningFactor, unsigned int epochs)
+void ANNE::Network::train(ActivationFunction function, DataSet * dataSet, float learningRate, unsigned int epochs)
 {
     for(unsigned int i = 0; i < epochs; i++)
-        for(unsigned int j = 0; j < inputs.size(); j++)
-            learn(function, inputs[j], outputs[j], learningFactor);
+        for(unsigned int j = 0; j < dataSet->inputs.size(); j++)
+            learn(function, dataSet->inputs[j], dataSet->outputs[j], learningRate);
 }
