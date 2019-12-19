@@ -2,7 +2,18 @@
 
 ANNE::Synapse::Synapse(Neuron * s, Neuron * t) : source(s), target(t), weight(1) {}
 
+ANNE::Synapse::~Synapse() {}
+
 ANNE::Neuron::Neuron() : inputs(), outputs(), bias(1), value(0) {}
+
+ANNE::Neuron::~Neuron()
+{
+    for(Synapse * synapse : inputs)
+        delete synapse;
+
+    inputs.clear();
+    outputs.clear();
+}
 
 void ANNE::Neuron::connect(Neuron * neuron)
 {
@@ -13,8 +24,8 @@ void ANNE::Neuron::connect(Neuron * neuron)
 
 void ANNE::Neuron::connect(Layer * layer)
 {
-    for(Neuron & neuron : layer->neurons)
-        connect(&neuron);
+    for(Neuron * neuron : layer->neurons)
+        connect(neuron);
 }
 
 void ANNE::Neuron::activate(ActivationFunction function)
@@ -34,67 +45,99 @@ void ANNE::Neuron::activate(ActivationFunction function)
         value = sum;
 }
 
-void ANNE::Neuron::adjust(float learningFactor, float target)
+void ANNE::Neuron::calculateError()
 {
-    float outputErrorSum = 0;
+    float errorSum = 0;
     for(Synapse * output : outputs)
-        outputErrorSum += output->target->error * output->weight;
-    error = (target - value) * value * (1 - value) * (outputErrorSum > 0 ? outputErrorSum : 1);
+        errorSum += output->target->error * output->weight;
+    error = value * (1 - value) * errorSum;
+}
+
+void ANNE::Neuron::calculateError(float target)
+{
+    error = (target - value) * value * (1 - value);
+}
+
+void ANNE::Neuron::updateWeights(float learningFactor)
+{
     for(Synapse * synapse : inputs)
     {
-        Neuron & source = *synapse->source;
-        synapse->weight += learningFactor * error * source.value;
+        Neuron * source = synapse->source;
+        synapse->weight += learningFactor * error * source->value;
     }
     bias += learningFactor * error;
 }
 
-ANNE::Layer::Layer(unsigned int size) : neurons(size) {}
+ANNE::Layer::Layer(unsigned int size) : neurons()
+{
+    for(unsigned int i = 0; i < size; i++)
+        neurons.push_back(new Neuron());
+}
+
+ANNE::Layer::~Layer()
+{
+    for(Neuron * neuron : neurons)
+        delete neuron;
+
+    neurons.clear();
+}
 
 void ANNE::Layer::connect(Layer * layer)
 {
-    for(Neuron & neuron : neurons)
-        neuron.connect(layer);
+    for(Neuron * neuron : neurons)
+        neuron->connect(layer);
 }
 
 void ANNE::Layer::activate(ActivationFunction function)
 {
-    for(Neuron & neuron : neurons)
-        neuron.activate(function);
+    for(Neuron * neuron : neurons)
+        neuron->activate(function);
+}
+
+void ANNE::Layer::calculateErrors()
+{
+    for(Neuron * neuron : neurons)
+        neuron->calculateError();
+}
+
+void ANNE::Layer::updateWeights(float learningFactor)
+{
+    for(Neuron * neuron : neurons)
+        neuron->updateWeights(learningFactor);
 }
 
 ANNE::Network::Network(std::vector<unsigned int> sizes)
 {
     for(unsigned int size : sizes)
-        layers.push_back(Layer(size));
+        layers.push_back(new Layer(size));
+}
+
+ANNE::Network::~Network()
+{
+    for(Layer * layer : layers)
+        delete layer;
+
+    layers.clear();
 }
 
 void ANNE::Network::connect()
 {
     for(unsigned int i = 1; i < layers.size(); i++)
-    {
-        Layer & layer = layers[i];
-        layer.connect(&layers[i - 1]);
-    }
+        layers[i]->connect(layers[i - 1]);
 }
 
 std::vector<float> ANNE::Network::compute(ActivationFunction function, std::vector<float> input, bool round)
 {
-    Layer & inputLayer = layers[0];
-    for(unsigned int i = 0; i < inputLayer.neurons.size(); i++)
-    {
-        Neuron & neuron = inputLayer.neurons[i];
-        neuron.value = input[i];
-    }
+    Layer * inputLayer = layers[0];
+    for(unsigned int i = 0; i < inputLayer->neurons.size(); i++)
+        inputLayer->neurons[i]->value = input[i];
     for(unsigned int i = 1; i < layers.size(); i++)
-    {
-        Layer & layer = layers[i];
-        layer.activate(function);
-    }
-    Layer & outputLayer = layers[layers.size() - 1];
-    std::vector<float> output(outputLayer.neurons.size());
+        layers[i]->activate(function);
+    Layer * outputLayer = layers[layers.size() - 1];
+    std::vector<float> output(outputLayer->neurons.size());
     for(unsigned int i = 0; i < output.size(); i++)
     {
-        float value = outputLayer.neurons[i].value;
+        float value = outputLayer->neurons[i]->value;
         output[i] = round ? ::round(value) : value;
     }
     return output;
@@ -103,21 +146,13 @@ std::vector<float> ANNE::Network::compute(ActivationFunction function, std::vect
 void ANNE::Network::learn(ActivationFunction function, std::vector<float> input, std::vector<float> output, float learningFactor)
 {
     std::vector<float> result = compute(function, input);
-    Layer & outputLayer = layers[layers.size() - 1];
-    for(unsigned int i = 0; i < outputLayer.neurons.size(); i++)
-    {
-        Neuron & neuron = outputLayer.neurons[i];
-        neuron.adjust(output[i], learningFactor);
-    }
+    Layer * outputLayer = layers[layers.size() - 1];
+    for(unsigned int i = 0; i < outputLayer->neurons.size(); i++)
+        outputLayer->neurons[i]->calculateError(output[i]);
     for(unsigned int l = layers.size() - 2; l > 0; l--)
-    {
-        Layer & layer = layers[l];
-        for(unsigned int i = 0; i < layer.neurons.size(); i++)
-        {
-            Neuron & neuron = layer.neurons[i];
-            neuron.adjust(learningFactor);
-        }
-    }
+        layers[l]->calculateErrors();
+    for(Layer * layer : layers)
+        layer->updateWeights(learningFactor);
 }
 
 void ANNE::Network::learn(ActivationFunction function, std::vector<std::vector<float>> inputs, std::vector<std::vector<float>> outputs, float learningFactor, unsigned int epochs)
